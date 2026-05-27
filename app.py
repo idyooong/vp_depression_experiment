@@ -41,18 +41,39 @@ def main():
     participant_view()
 
 def participant_view():
-    # [수정된 부분] Stage 10(완료 화면) 도달 여부에 따라 제목을 다르게 렌더링합니다.
-    if st.session_state.stage < 10:
+    # 1. 상태에 따라 최상단 제목 분리 (마지막 페이지 번호가 11로 밀림)
+    if st.session_state.stage < 11:
         st.title("실험 참여 페이지")
     else:
-        st.title("VP-tts 실험 종료 및 제출 완료") # 필요시 텍스트 수정
+        st.title("VP-tts 실험 종료 및 제출 완료")
 
-    # [Stage 0] 인구통계
+    # [Stage 0] 인구통계 및 참여 코드 확인
     if st.session_state.stage == 0:
         with st.form("demography"):
             st.session_state.data['name'] = st.text_input("참여자 이름/ID")
             st.session_state.data['age'] = st.number_input("나이", 18, 100)
-            if st.form_submit_button("실험 시작"):
+            # access_code = st.text_input("실험 참여 코드", type="password") 
+            
+            if st.form_submit_button("다음 단계로"):
+                # 코드 검증
+                # if access_code != "HCI2026": 
+                #     st.error("올바른 참여 코드가 아닙니다. 연구자에게 문의하십시오.")
+                #     st.stop()
+                
+                # 통과 시 안내사항 페이지로 이동
+                st.session_state.stage = 1
+                st.rerun()
+
+    # [Stage 1] 실험 안내사항 (새로 추가된 페이지)
+    elif st.session_state.stage == 1:
+        st.subheader("📢 실험 진행 안내사항")
+        st.markdown(":blue[본 실험은 영상의 음성과 아바타의 모션(Influence Cues)을 평가하므로, 반드시 **이어폰을 착용하거나 스피커 볼륨을 켠 상태**로 진행해 주십시오.]")
+        st.markdown(":blue[원활한 구동을 위해 가급적 **PC 환경의 Chrome 브라우저** 사용을 권장합니다.]")        
+        st.write("위 안내사항을 모두 확인하셨다면 아래 버튼을 눌러 본 실험을 시작해 주십시오.")
+        
+        # 여기서 '실험 시작'을 눌러야만 비로소 구글 시트 통신 및 그룹 할당 진행
+        if st.button("안내사항 확인 및 실험 시작"):
+            with st.spinner("실험 환경을 설정 중입니다..."):
                 client = get_gspread_client()
                 sheet = client.open("ExperimentDB").worksheet("groups")
                 data = pd.DataFrame(sheet.get_all_records())
@@ -65,14 +86,17 @@ def participant_view():
                 row_index = data.index[data['group_id'] == min_group['group_id']][0] + 2
                 sheet.update_cell(row_index, 2, int(min_group['count']) + 1)
                 
-                st.session_state.stage = 1
+                # 첫 번째 영상 페이지(Stage 2)로 이동
+                st.session_state.stage = 2
                 st.rerun()
 
-    # [Stage 1~8] 영상 및 설문
-    elif 1 <= st.session_state.stage <= 8:
-        idx = st.session_state.stage - 1
+    # [Stage 2~9] 영상 및 설문 (기존 1~8에서 밀림)
+    elif 2 <= st.session_state.stage <= 9:
+        idx = st.session_state.stage - 2
         video_id = st.session_state.video_order[idx]
-        st.write(f"### {st.session_state.stage} / 8")
+        
+        # 진행도 표시 (1/8 ~ 8/8)
+        st.write(f"### {idx + 1} / 8")
         st.video(f"videos/{video_id}.mp4")
 
         with st.form(f"survey_{idx}"):
@@ -85,9 +109,8 @@ def participant_view():
                 st.session_state.stage += 1
                 st.rerun()
 
-    # [Stage 9] 최종 저장 프로세스
-    elif st.session_state.stage == 9:
-        # 데이터 처리 중 스피너 표시
+    # [Stage 10] 최종 저장 프로세스 (기존 9에서 밀림)
+    elif st.session_state.stage == 10:
         with st.spinner("데이터를 서버에 기록 중입니다. 잠시만 기다려주세요..."):
             client = get_gspread_client()
             sheet = client.open("ExperimentDB").worksheet("logs")
@@ -113,11 +136,11 @@ def participant_view():
             sheet.append_row(ordered_data)
             
             # 4. 상태 변경 및 화면 새로고침
-            st.session_state.stage = 10
+            st.session_state.stage = 11
             st.rerun() 
 
-    # [Stage 10] 실험 완료 화면
-    elif st.session_state.stage == 10:
+    # [Stage 11] 실험 완료 화면 (기존 10에서 밀림)
+    elif st.session_state.stage == 11:
         st.balloons()
         st.success("실험이 모두 완료되었습니다. 데이터가 정상적으로 저장되었습니다.")
         st.write("참여해 주셔서 감사합니다. 창을 닫아주셔도 좋습니다.")
