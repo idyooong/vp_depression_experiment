@@ -43,7 +43,7 @@ def main():
 def participant_view():
     # 1. 상태에 따라 최상단 제목 분리 (마지막 페이지 번호가 11로 밀림)
     if st.session_state.stage < 11:
-        st.title("실험 참여 페이지")
+        st.title("가상환자 평가 실험")
     else:
         st.title("VP-tts 실험 종료 및 제출 완료")
 
