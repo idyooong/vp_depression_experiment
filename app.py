@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 import datetime
+import base64, time
 
 # [설정] 구글 시트 클라이언트
 def get_gspread_client():
@@ -15,15 +16,16 @@ def get_gspread_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
+
 GROUPS = {
-    "group_A": ["M0", "M1", "M2", "M3", "F0", "F1", "F2", "F3"],
-    "group_B": ["M1", "M2", "M3", "F0", "F1", "F2", "F3", "M0"],
-    "group_C": ["M2", "M3", "F0", "F1", "F2", "F3", "M0", "M1"],
-    "group_D": ["M3", "F0", "F1", "F2", "F3", "M0", "M1", "M2"],
-    "group_E": ["F0", "F1", "F2", "F3", "M0", "M1", "M2", "M3"],
-    "group_F": ["F1", "F2", "F3", "M0", "M1", "M2", "M3", "F0"],
-    "group_G": ["F2", "F3", "M0", "M1", "M2", "M3", "F0", "F1"],
-    "group_H": ["F3", "M0", "M1", "M2", "M3", "F0", "F1", "F2"],
+    "group_A": ["M0", "F1", "M3", "F2", "F0", "M1", "F3", "M2"], 
+    "group_B": ["F1", "M3", "F2", "F0", "M1", "F3", "M2", "M0"], 
+    "group_C": ["M3", "F2", "F0", "M1", "F3", "M2", "M0", "F1"], 
+    "group_D": ["F2", "F0", "M1", "F3", "M2", "M0", "F1", "M3"], 
+    "group_E": ["F0", "M2", "F3", "M1", "M0", "F2", "M3", "F1"], 
+    "group_F": ["M2", "F3", "M1", "M0", "F2", "M3", "F1", "F0"], 
+    "group_G": ["F3", "M1", "M0", "F2", "M3", "F1", "F0", "M2"], 
+    "group_H": ["M1", "M0", "F2", "M3", "F1", "F0", "M2", "F3"], 
 }
 
 def main():
@@ -40,9 +42,6 @@ def main():
             </style>
             """
     st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-    if st.query_params.get("admin") == st.secrets["ADMIN_PASS"]:
-        admin_dashboard()
-        return
 
     if 'stage' not in st.session_state:
         st.session_state.stage = 0
@@ -52,7 +51,7 @@ def main():
     participant_view()
 
 def participant_view():
-    # 1. 상태에 따라 최상단 제목 분리 (마지막 페이지 번호가 11로 밀림)
+    # 1. 상태에 따라 최상단 제목 분리
     if st.session_state.stage < 11:
         st.title("가상환자 평가 실험")
     else:
@@ -62,24 +61,21 @@ def participant_view():
     if st.session_state.stage == 0:
         with st.form("demography"):
             st.session_state.data['name'] = st.text_input("참여자 이름")
-            # access_code = st.text_input("실험 참여 코드", type="password") 
-            # # 생년월일: UI 캘린더 위젯(date_input)보다 text_input에 텍스트 형식을 강제하는 것이 입력 속도가 빠릅니다.
             st.session_state.data['birth_date'] = st.text_input("생년월일 (예: 010101)", max_chars=6)
             st.session_state.data['phone'] = st.text_input("전화번호 (예: 010-0000-0000)", max_chars=13)
             st.session_state.data['gender'] = st.radio(
                 "성별", 
-                options=["남성", "여성", "기타/응답 거부"],
+                options=["남성", "여성"],
                 index=None,
                 horizontal=True
             )
-            # # 상담 경험 유무: 예/아니요 형태의 이진 범주형 데이터는 철자 오류를 막기 위해 반드시 Radio 버튼 사용
             st.session_state.data['clinical_experience'] = st.radio(
                 "실제 환자 상담 경험 유무", 
                 options=["예", "아니요"],
+                index=None,
                 horizontal=True
             )
             
-            # # 자격증: 다수의 자격증과 급수를 자유롭게 적을 수 있도록 넓은 영역의 text_area 사용
             st.session_state.data['certifications'] = st.text_area(
                 "보유하고 있는 상담 및 정신의학 자격증 전체 기재",
                 placeholder="정확한 명칭과 급수를 기재해 주십시오. (예: 임상심리사 1급, 청소년상담사 2급)\n해당 사항이 없을 경우 '없음'이라고 기재해 주십시오."
@@ -89,11 +85,6 @@ def participant_view():
                     st.warning("모든 인구통계 및 배경 정보 항목을 빠짐없이 입력해 주십시오.")
                     st.stop()
                 
-                # 코드 검증
-                # if access_code != "HCI2026": 
-                #     st.error("올바른 참여 코드가 아닙니다. 연구자에게 문의하십시오.")
-                #     st.stop()
-                
                 # 통과 시 안내사항 페이지로 이동
                 st.session_state.stage = 1
                 st.rerun()
@@ -102,7 +93,9 @@ def participant_view():
     elif st.session_state.stage == 1:
         st.subheader("📢 실험 진행 안내사항")
         st.markdown(":blue[본 실험은 영상의 음성과 아바타의 모션(Influence Cues)을 평가하므로, 반드시 **이어폰을 착용하거나 스피커 볼륨을 켠 상태**로 진행해 주십시오.]")
-        st.markdown(":blue[원활한 구동을 위해 가급적 **PC 환경의 Chrome 브라우저** 사용을 권장합니다.]")        
+        st.markdown(":blue[원활한 구동을 위해 가급적 **PC 환경의 Chrome 브라우저** 사용을 권장합니다.]")  
+        st.markdown(":blue[실험 도중 절대로 **‘새로고침(F5)’**이나 **‘뒤로 가기’** 버튼을 누르지 마십시오.]") 
+        st.markdown(":blue[도중에 창을 닫으면 데이터가 소실되어 실험을 처음부터 다시 시작해야 합니다. **반드시 한 번에 끝까지 진행해 주십시오.**]")       
         st.write("위 안내사항을 모두 확인하셨다면 아래 버튼을 눌러 본 실험을 시작해 주십시오.")
         
         # 여기서 '실험 시작'을 눌러야만 비로소 구글 시트 통신 및 그룹 할당 진행
@@ -124,7 +117,7 @@ def participant_view():
                 st.session_state.stage = 2
                 st.rerun()
 
-    # [Stage 2~9] 영상 및 설문 (기존 1~8에서 밀림)
+    # [Stage 2~9] 영상 및 설문
     elif 2 <= st.session_state.stage <= 9:
         idx = st.session_state.stage - 2
         video_id = st.session_state.video_order[idx]
@@ -134,23 +127,84 @@ def participant_view():
 
         st.markdown("**📌 영상 시청 전 안내사항**")
         st.markdown("본 영상은 **주요우울장애(Major Depressive Disorder)** 환자가 임상 연구를 위해 인터뷰어 없이 자신의 상태를 녹음하는 **독백(Monologue)** 상황입니다. 영상 속 환자는 자신의 현재 감정과 과거 이력, 증상의 강도 및 지속 기간, 그리고 이러한 증상이 일상생활에 미치는 영향 등을 스스로 진술하고 있습니다.")
-        st.markdown("**영상을 시청하고 아래 평가 항목에 답변해 주십시오.**")
+        st.markdown("**영상(2분 이내)을 시청하고 아래 평가 항목에 답변해 주십시오.**")
         st.write("")
 
-        st.video(f"videos/{video_id}.mp4")
+        VIDEO_LENGTHS = {
+            "M0": 64, "M1": 42, "M2": 58, "M3": 75,
+            "F0": 79, "F1": 72, "F2": 42, "F3": 78
+        }
+        required_time = VIDEO_LENGTHS.get(video_id, 60)
+
+        # 초기 상태 정의
+        if f"play_started_{video_id}" not in st.session_state:
+            st.session_state[f"play_started_{video_id}"] = False
+            st.session_state[f"start_time_{video_id}"] = 0
+            st.session_state[f"unlocked_{video_id}"] = False
+
+        # 1. 영상을 아직 시작하지 않은 상태
+        if not st.session_state[f"play_started_{video_id}"]:
+            st.info("아래 버튼을 누르면 영상이 즉시 재생됩니다.")
+            if st.button("▶️ 영상 시청 시작", key=f"start_btn_{video_id}"):
+                st.session_state[f"play_started_{video_id}"] = True
+                st.session_state[f"start_time_{video_id}"] = time.time()
+                st.rerun()
+            st.stop() # 시작 전에는 아래 폼 렌더링 차단
+
+        # 2. 버튼을 눌러 영상이 시작된 상태
+        else:
+            # HTML5 <video> 태그를 이용해 '컨트롤 바'를 물리적으로 삭제하고 강제 자동재생
+            video_path = f"videos/{video_id}.mp4"
+            with open(video_path, "rb") as v_file:
+                video_bytes = v_file.read()
+            encoded_video = base64.b64encode(video_bytes).decode()
+            
+            if not st.session_state[f"unlocked_{video_id}"]:
+                # 2-1. 설문 잠금 상태 (1회차 시청 중): 컨트롤 바 원천 차단, 강제 자동재생
+                video_html = f"""
+                    <video width="100%" autoplay>
+                        <source src="data:video/mp4;base64,{encoded_video}" type="video/mp4">
+                    </video>
+                """
+            else:
+                # 2-2. 설문 해제 상태 (시청 완료 후): 컨트롤 바(controls) 생성 및 리플레이 허용
+                video_html = f"""
+                    <video width="100%" controls controlsList="nodownload noplaybackrate" disablePictureInPicture>
+                        <source src="data:video/mp4;base64,{encoded_video}" type="video/mp4">
+                    </video>
+                """
+            st.markdown(video_html, unsafe_allow_html=True)
+            # 3. 설문 폼 잠금 제어
+            if not st.session_state[f"unlocked_{video_id}"]:
+                st.warning("영상이 종료된 후 아래 버튼을 눌러 평가 문항을 여십시오.")
+                if st.button("평가 문항 열기", key=f"unlock_btn_{video_id}"):
+                    elapsed = time.time() - st.session_state[f"start_time_{video_id}"]
+                    
+                    if elapsed < required_time:
+                        remain = int(required_time - elapsed)
+                        st.error(f"아직 영상 시청이 완료되지 않았습니다. 영상 시청 완료 후 다시 시도해 주십시오.")
+                    else:
+                        st.session_state[f"unlocked_{video_id}"] = True
+                        st.rerun()
+                st.stop() # 영상 길이가 안 지났으면 설문 폼 렌더링 차단
 
         with st.form(f"survey_{idx}"):
             st.subheader("1. 임상적 증상 평가")
-            st.session_state.data[f"{video_id}_severity"] = st.radio("Severity (증상 심각도)", ["None", "Mild", "Moderate", "Severe"])
-            st.session_state.data[f"{video_id}_influence"] = st.multiselect("Influence Cues (위 평가에 영향을 준 주요 단서)", ["Text(내용)", "Eye&Head movement(시선 움직임)", "Face(표정)", "Body Behavior(행동)"])
+            st.markdown("**Q1. 화면 속 환자의 우울 증상 심각성을 4단계 중 하나로 선택해 주십시오.**")
+            st.session_state.data[f"{video_id}_severity"] = st.radio("**Severity (증상 심각도)**", ["None", "Mild", "Moderate", "Severe"], index=None)
+
+            st.write("") 
+            st.markdown("**Q2. 심각도를 판단하는 데 가장 큰 영향을 미친 요소를 모두 선택해 주십시오. (다중 선택 가능)**")
+            st.session_state.data[f"{video_id}_influence"] = st.multiselect("**Influence Cues**", ["Text(발화 내용)", "Eye&Head movement(시선 및 고개 움직임)", "Face(표정)", "Body Behavior(신체 행동)"])
+            
             st.session_state.data[f"{video_id}_influence_detail"] = st.text_area(
                 "위 단서를 선택한 구체적인 이유를 적어주세요.",
                 placeholder="예: 특정 대화 내용이 헷갈렸다, 고개를 끄덕이는 모션이 부자연스러웠다, 시선 처리가 자연스러웠다 등"
             )
             st.divider()
-            st.subheader("2. 모의 환자 종합 평가")
+            st.subheader("2. 가상 환자 종합 평가")
             st.session_state.data[f"{video_id}_humanlikeness"] = st.radio(
-                "**인간미** [모의 환자는 발화 과정에서 흔히 볼 수 있는 특성을 보였는가, 아니면 자동적인 존재처럼 보였는가?]",
+                "**Q3. 인간미** [가상 환자는 발화 과정에서 흔히 볼 수 있는 특성을 보였는가, 아니면 자동적인 존재처럼 보였는가?]",
                 [
                     "5 - 매우 인간과 유사함: 풍부하고 미묘하며 예측 불가능한 행동(감정, 미묘한 어조 변화, 적절한 망설임)을 보임.",
                     "4 - 대체로 인간과 유사함: 감정 표현이나 반응 패턴에 약간의 불일치가 있을 뿐, 전반적으로 인간과 유사하게 행동함.",
@@ -162,7 +216,7 @@ def participant_view():
             
             # 2. 자연스러움
             st.session_state.data[f"{video_id}_naturalness"] = st.radio(
-                "**자연스러움** [모의 환자의 발화 방식(음성, 표정, 제스처 등)이 실제 사람들의 행동과 일치했습니까?]",
+                "**Q4. 자연스러움** [가상 환자의 발화 방식(음성, 표정, 제스처 등)이 실제 사람들의 행동과 일치했습니까?]",
                 [
                     "5 - 매우 자연스러움: 말하는 방식, 어조 및 표현이 실제와 완벽하게 일치하며 전혀 어색함이 없음.",
                     "4 - 대체로 자연스러움: 대체로 현실적인 방식으로 말하며, 부자연스러운 표현은 가끔씩만 나타남.",
@@ -174,7 +228,7 @@ def participant_view():
             
             # 3. 유창성
             st.session_state.data[f"{video_id}_fluency"] = st.radio(
-                "**유창성** [모의 환자가 자신의 상태나 증상을 일관성 있고 매끄럽게 설명했습니까?]",
+                "**Q5. 유창성** [가상 환자가 자신의 상태나 증상을 일관성 있고 매끄럽게 설명했습니까?]",
                 [
                     "5 - 매우 유창함: 최소한의 멈춤, 일관성 있고 구조적이며 매끄러운 방식으로 말을 이어감.",
                     "4 - 대체로 유창함: 내용이 일반적으로 매끄럽고 구조가 잘 잡혀 있으며 흐름을 방해하지 않는 수준의 사소한 불일치만 있음.",
@@ -183,10 +237,55 @@ def participant_view():
                     "1 - 유창하지 않음: 논리적 일관성이 전혀 없고, 자주 단절되거나 불안전하거나 무의미한 답변을 함."
                 ], index=None
             )
+            st.subheader("3. 가상 환자 심층 품질 평가")
+    
+            # -----------------------------------------------------------------
+            # 문항 1: 감정적 일관성 (Emotional Consistency)
+            # -----------------------------------------------------------------
+            st.markdown("**Q6. 가상 환자가 영상 내내 질환에 맞춰 일관된 감정적, 인지적 패턴을 지속적으로 보였습니까?**")
+            
+            consistency_options = [
+                "5 - 매우 일관됨: 영상 내내 안정적이고 일관된 감정적, 인지적 패턴을 유지합니다.",
+                "4 - 대체로 일관됨: 일반적으로 적절한 감정적 반응을 유지하지만 사소한 편차가 있습니다.",
+                "3 - 어느 정도 일관성 있음: 감정 표현이 때때로 일관되지만 가끔 강도나 적절성이 달라지기도 합니다.",
+                "2 - 약간 일관성 있음: 감정적 반응의 잦은 불일치로 인해 현실성이 감소합니다.",
+                "1 - 일관성 없음: 감정 표현이 무작위적이거나 모순되어 신뢰성이 떨어집니다."
+            ]
+            
+            st.session_state.data[f"{video_id}_consistency"] = st.radio(
+                label="감정적 일관성 평가",
+                options=consistency_options,
+                index=None,
+                label_visibility="collapsed"  # 위 markdown 지시문과 중복되므로 라벨은 숨김 처리
+            )
+            
+            st.write("")  # 문항 간 시각적 여백 확보
+            
+            # -----------------------------------------------------------------
+            # 문항 2: 증상 현실성 (Symptom Realism)
+            # -----------------------------------------------------------------
+            st.markdown("**Q7. 가상 환자가 우울증에 대한 임상적 관찰과 일치하는 방식으로 증상(예:정서적 둔마, 무쾌감 등)을 보였습니까?**")
+            
+            realism_options = [
+                "5 - 매우 현실적임: 실제 우울증 임상 관찰과 일치하는 광범위한 우울증 증상을 정확하게 나타냅니다.",
+                "4 - 대체로 사실적: 대부분의 증상이 정확하게 표현되었으며, 사소한 부정확함이나 세부 정보 누락만 있습니다.",
+                "3 - 어느 정도 현실적: 일부 증상은 임상적 기대치와 일치하지만, 다른 증상은 과장되거나 나타나지 않습니다.",
+                "2 - 약간 현실적: 증상이 종종 불완전하거나, 잘못 표현되거나, 피상적으로 표현됩니다.",
+                "1 - 비현실적임: 현실적인 우울증 증상이 없거나 우울증과 관련 없는 증상을 나타냅니다."
+            ]
+            
+            st.session_state.data[f"{video_id}_realism"] = st.radio(
+                label="증상 현실성 평가",
+                options=realism_options,
+                index=None,
+                label_visibility="collapsed"  # 위 markdown 지시문과 중복되므로 라벨은 숨김 처리
+            )
             st.divider()
             
-            st.subheader("3. 추가 피드백")
-            st.session_state.data[f"{video_id}_feedback_pros"] = st.text_area("좋았던 점 (Strengths)", placeholder="모의 환자의 긍정적인 부분이나 현실적이었던 점을 적어주세요.")
+            st.subheader("4. 추가 피드백")
+            st.markdown("**Q8. 영상 속 가상 환자의 표정, 행동, 발화 내용, 음성 등에 대해 긍정적인 부분과 개선이 필요한 부분을 작성해 주십시오.**")
+
+            st.session_state.data[f"{video_id}_feedback_pros"] = st.text_area("좋았던 점 (Strengths)", placeholder="가상 환자의 긍정적인 부분이나 현실적이었던 점을 적어주세요.")
             st.session_state.data[f"{video_id}_feedback_cons"] = st.text_area("부족했던 점 (Weaknesses)", placeholder="개선이 필요한 부분이나 부자연스러웠던 점을 적어주세요.")
             
             if st.form_submit_button("다음 영상으로"):
@@ -195,12 +294,14 @@ def participant_view():
                 pros_val = st.session_state.data.get(f"{video_id}_feedback_pros", "").strip()
                 cons_val = st.session_state.data.get(f"{video_id}_feedback_cons", "").strip()
 
-                if (st.session_state.data[f"{video_id}_severity"] is None or
+                if (st.session_state.data.get(f"{video_id}_severity") is None or
                     not influence_val or
                     not influence_detail_val or
-                    st.session_state.data[f"{video_id}_humanlikeness"] is None or
-                    st.session_state.data[f"{video_id}_naturalness"] is None or
-                    st.session_state.data[f"{video_id}_fluency"] is None or
+                    st.session_state.data.get(f"{video_id}_humanlikeness") is None or
+                    st.session_state.data.get(f"{video_id}_naturalness") is None or
+                    st.session_state.data.get(f"{video_id}_fluency") is None or
+                    st.session_state.data.get(f"{video_id}_consistency") is None or
+                    st.session_state.data.get(f"{video_id}_realism") is None or
                     not pros_val or
                     not cons_val):
                     
@@ -209,20 +310,54 @@ def participant_view():
                 st.session_state.stage += 1
                 st.rerun()
 
-    # [Stage 10] 최종 저장 프로세스 (기존 9에서 밀림)
     elif st.session_state.stage == 10:
+        st.subheader("마지막 단계: 전체 시스템 종합 평가")
+        st.info("모든 영상 평가가 완료되었습니다. 마지막으로 본 가상 환자 시스템 전체에 대한 종합적인 의견을 여쭙습니다.")
+        
+        with st.form("final_comprehensive_survey"):
+            st.markdown("**Q. 오늘 시청한 8개의 주요우울장애(MDD) 가상 환자 독백 영상들이 본인의 임상적 관찰력 및 추론 능력을 향상시키는 데 도움이 되었습니까?**")
+            st.session_state.data["final_clinical_utility"] = st.radio(
+                "임상적 유용성", 
+                [
+                    "5 - 매우 도움이 됨", 
+                    "4 - 대체로 도움이 됨", 
+                    "3 - 보통", 
+                    "2 - 별로 도움 되지 않음", 
+                    "1 - 전혀 도움 되지 않음"
+                ],
+                index=None,
+                label_visibility="collapsed"
+            )
+            
+            st.write("") # 여백
+            
+            st.markdown("**Q. (선택 사항) 향후 이 가상 환자 시스템을 실제 임상 교육이나 훈련용으로 도입한다면, 어떤 기능이 추가되거나 개선되면 좋을지 자유롭게 제안해 주십시오.**")
+            st.session_state.data["final_suggestion"] = st.text_area(
+                "시스템 개선 제안",
+                placeholder="예: 독백뿐만 아니라 직접 질문할 수 있는 대화 기능이 필요하다, 환자의 과거 병력지(Chart)도 함께 제공되면 좋겠다 등",
+                label_visibility="collapsed"
+            )
+            
+            # 최종 제출 버튼
+            submitted = st.form_submit_button("최종 데이터 제출 및 실험 종료")
+            if submitted:
+                if st.session_state.data["final_clinical_utility"] is None:
+                    st.error("객관식 평가 항목에 응답해 주십시오.")
+                else:
+                    st.session_state.stage = 11
+                    st.rerun()
+
+    # [Stage 10] 최종 저장 프로세스 (기존 9에서 밀림)
+    elif st.session_state.stage == 11:
         with st.spinner("데이터를 서버에 기록 중입니다. 잠시만 기다려주세요..."):
             client = get_gspread_client()
             sheet = client.open("ExperimentDB").worksheet("logs")
             
-            # 1. 타임스탬프 추가
             st.session_state.data['timestamp'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # 2. 헤더 순서 정의 (시트의 A열부터 순서대로)
             ordered_keys = ['timestamp', 'name', 'birth_date', 'phone', 'gender', 'clinical_experience', 'certifications', 'group_id']
             videos = ["M0", "M1", "M2", "M3", "F0", "F1", "F2", "F3"]
             
-            # [수정된 부분] 세분화된 7개의 변수를 모두 담도록 완벽히 동기화
             for v in videos:
                 ordered_keys.extend([
                     f"{v}_severity", 
@@ -231,9 +366,15 @@ def participant_view():
                     f"{v}_humanlikeness", 
                     f"{v}_naturalness", 
                     f"{v}_fluency", 
+                    f"{v}_consistency",
+                    f"{v}_realism",
                     f"{v}_feedback_pros", 
                     f"{v}_feedback_cons"
                 ])
+            ordered_keys.extend([
+                "final_clinical_utility",
+                "final_suggestion"
+            ])
             
             # 3. 데이터 추출 및 전처리 (리스트형 방지)
             ordered_data = []
@@ -247,18 +388,13 @@ def participant_view():
             sheet.append_row(ordered_data)
             
             # 4. 상태 변경 및 화면 새로고침
-            st.session_state.stage = 11
+            st.session_state.stage = 12
             st.rerun()
-
-    # [Stage 11] 실험 완료 화면 (기존 10에서 밀림)
-    elif st.session_state.stage == 11:
+    # [Stage 11] 실험 완료 화면
+    elif st.session_state.stage == 12:
         st.balloons()
         st.success("실험이 모두 완료되었습니다.")
         st.write("참여해 주셔서 감사합니다. 창을 닫아주셔도 좋습니다.")
-
-def admin_dashboard():
-    st.write("### 관리자 페이지")
-    # ... 대시보드 로직 ...
 
 if __name__ == "__main__":
     main()
